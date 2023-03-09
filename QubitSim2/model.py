@@ -1,4 +1,5 @@
 import numpy as np
+from numpy import kron
 import progressbar
 from matplotlib import pyplot as plt
 from matplotlib import lines
@@ -20,6 +21,7 @@ class Circuit():
         self.time_evolution_operator_path = []
         self.time_evolution_operator_dressed = None
         self.time_evolution_operator_dressed_sub = None
+        self.M_Ec = None
         # ====================================================================
 
     def add_qubit(self, C, phi_r, I_c_1, I_c_2):
@@ -90,8 +92,10 @@ class Circuit():
         # 1.Getting transformational matrix converting bare bases to dressed bases.
         # dressed_eigenvalue: Dressed states' energy eigenvalue.
         # dressed_featurevector: Transformational matrix converting bare bases to dressed bases
+        # M_Ec: Capactor energy matrix.
+        self.M_Ec = self.M_Ec_generator()
         self.dressed_eigenvalue, self.dressed_featurevector = self.transformational_matrix_generator(
-            self.Hamiltonian_generator(0, 'z'))
+            self.Hamiltonian_generator())
 
         # 2.Simulation calculating the whole time evolution operator.
         p = progressbar.ProgressBar()
@@ -194,7 +198,7 @@ class Circuit():
         phi_list = []
         Ic_1 = []
         Ic_2 = []
-        M_L = np.zeros([self.qubit_number, self.qubit_number])
+        M_L = np.ones([self.qubit_number, self.qubit_number])
         if (time != None):
             if (time < self.simulator.t_start or time > self.simulator.t_end):
                 print("ERROR: Time out og simulator's range!")
@@ -282,32 +286,31 @@ class Circuit():
         matrix_expand = 1
         for i in range(self.qubit_number):
             if i == index:
-                matrix_expand = np.kron(matrix_expand, matrix)
+                matrix_expand = kron(matrix_expand, matrix)
             else:
-                matrix_expand = np.kron(matrix_expand, np.eye(
+                matrix_expand = kron(matrix_expand, np.eye(
                     self.simulator.operator_order_num))
         return matrix_expand
 
-    def Hamiltonian_generator(self, n, mode='m'):
+    def Hamiltonian_generator(self, mode='z', n=0):
         """The function calculating the n'st time piece's Hamiltonian operator.
 
         Args:
-            n (int): The n'st time piece.
-            mode (str, optional): Calculating mode. Defaults to 'm'.
+            n (int): The n'st time piece. Defaults to 0.
+            mode (str, optional): Calculating mode. Defaults to 'z'.
 
         Returns:
             np.array: The n'st time piece's Hamiltonian.
         """
         if mode == 'm':
             Hamiltonian = 0
-            M_Ec = self.M_Ec_generator()
             M_Ej = self.M_Ej_generator(self.simulator.t_list[2*n-1])
             Y = complex(0, 1)*(fun.annihilation_operator_n(self.simulator.operator_order_num_change) -
                                fun.creation_operator_n(self.simulator.operator_order_num_change))/np.sqrt(2)
 
             for i in range(self.qubit_number):
-                Hamiltonian_temp = 0.5*np.sqrt(8*M_Ec[i][i]*M_Ej[i][i])*np.matmul((Y-0*np.eye(self.simulator.operator_order_num_change)), (Y-0*np.eye(self.simulator.operator_order_num_change)))-M_Ej[i][i]*fun.cos_matrix_n(self.operator_phi_generator(M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num_change)-np.power(
-                    8*M_Ec[i][i]/M_Ej[i][i], 0.25)*self.qubit_list[i].signal_x(self.simulator.t_list[2*n-1])*np.eye(self.simulator.operator_order_num_change), self.simulator.trigonometric_function_expand_order_num)+(M_Ej[i][i]-0.5*np.sqrt(8*M_Ej[i][i]*M_Ec[i][i]))*np.eye(self.simulator.operator_order_num_change)
+                Hamiltonian_temp = 0.5*np.sqrt(8*self.M_Ec[i][i]*M_Ej[i][i])*np.matmul((Y-0*np.eye(self.simulator.operator_order_num_change)), (Y-0*np.eye(self.simulator.operator_order_num_change)))-M_Ej[i][i]*fun.cos_matrix_n(self.operator_phi_generator(self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num_change)-np.power(
+                    8*self.M_Ec[i][i]/M_Ej[i][i], 0.25)*self.qubit_list[i].signal_x(self.simulator.t_list[2*n-1])*np.eye(self.simulator.operator_order_num_change), self.simulator.trigonometric_function_expand_order_num)+(M_Ej[i][i]-0.5*np.sqrt(8*M_Ej[i][i]*self.M_Ec[i][i]))*np.eye(self.simulator.operator_order_num_change)
                 Hamiltonian_temp = Hamiltonian_temp[0:self.simulator.operator_order_num,
                                                     0:self.simulator.operator_order_num]
                 Hamiltonian = Hamiltonian+self.tensor_identity_expand_generator(
@@ -316,23 +319,22 @@ class Circuit():
             for i in range(self.qubit_number):
                 for j in range(self.qubit_number):
                     if i != j:
-                        Hamiltonian = Hamiltonian+4*M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                            M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                        Hamiltonian = Hamiltonian+4*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
+                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
                         Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                            M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
             return Hamiltonian
 
         if mode == 'l':
             Hamiltonian = 0
-            M_Ec = self.M_Ec_generator()
             M_Ej = self.M_Ej_generator(self.simulator.t_list[2*n-2])
             Y = complex(0, 1)*(fun.annihilation_operator_n(self.simulator.operator_order_num_change) -
                                fun.creation_operator_n(self.simulator.operator_order_num_change))/np.sqrt(2)
 
             for i in range(self.qubit_number):
-                Hamiltonian_temp = 0.5*np.sqrt(8*M_Ec[i][i]*M_Ej[i][i])*np.matmul((Y-self.qubit_list[i].signal_x(self.simulator.t_list[2*n-2])*np.eye(self.simulator.operator_order_num_change)), (Y-self.qubit_list[i].signal_x(self.simulator.t_list[2*n-2])*np.eye(self.simulator.operator_order_num_change)))-M_Ej[i][i]*fun.cos_matrix_n(self.operator_phi_generator(M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num_change)-np.power(
-                    8*M_Ec[i][i]/M_Ej[i][i], 0.25)*self.qubit_list[i].signal_x(self.simulator.t_list[2*n-1])*np.eye(self.simulator.operator_order_num_change), self.simulator.trigonometric_function_expand_order_num)+(M_Ej[i][i]-0.5*np.sqrt(8*M_Ej[i][i]*M_Ec[i][i]))*np.eye(self.simulator.operator_order_num_change)
+                Hamiltonian_temp = 0.5*np.sqrt(8*self.M_Ec[i][i]*M_Ej[i][i])*np.matmul((Y-self.qubit_list[i].signal_x(self.simulator.t_list[2*n-2])*np.eye(self.simulator.operator_order_num_change)), (Y-self.qubit_list[i].signal_x(self.simulator.t_list[2*n-2])*np.eye(self.simulator.operator_order_num_change)))-M_Ej[i][i]*fun.cos_matrix_n(self.operator_phi_generator(self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num_change)-np.power(
+                    8*self.M_Ec[i][i]/M_Ej[i][i], 0.25)*self.qubit_list[i].signal_x(self.simulator.t_list[2*n-1])*np.eye(self.simulator.operator_order_num_change), self.simulator.trigonometric_function_expand_order_num)+(M_Ej[i][i]-0.5*np.sqrt(8*M_Ej[i][i]*self.M_Ec[i][i]))*np.eye(self.simulator.operator_order_num_change)
                 Hamiltonian_temp = Hamiltonian_temp[0:self.simulator.operator_order_num,
                                                     0:self.simulator.operator_order_num]
                 Hamiltonian = Hamiltonian+self.tensor_identity_expand_generator(
@@ -341,23 +343,22 @@ class Circuit():
             for i in range(self.qubit_number):
                 for j in range(self.qubit_number):
                     if i != j:
-                        Hamiltonian = Hamiltonian+4*M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                            M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                        Hamiltonian = Hamiltonian+4*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
+                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
                         Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                            M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
             return Hamiltonian
 
         if mode == 'r':
             Hamiltonian = 0
-            M_Ec = self.M_Ec_generator()
             M_Ej = self.M_Ej_generator(self.simulator.t_list[2*n])
             Y = complex(0, 1)*(fun.annihilation_operator_n(self.simulator.operator_order_num_change) -
                                fun.creation_operator_n(self.simulator.operator_order_num_change))/np.sqrt(2)
 
             for i in range(self.qubit_number):
-                Hamiltonian_temp = 0.5*np.sqrt(8*M_Ec[i][i]*M_Ej[i][i])*np.matmul((Y-self.qubit_list[i].signal_x(self.simulator.t_list[2*n])*np.eye(self.simulator.operator_order_num_change)), (Y-self.qubit_list[i].signal_x(self.simulator.t_list[2*n])*np.eye(self.simulator.operator_order_num_change)))-M_Ej[i][i]*fun.cos_matrix_n(self.operator_phi_generator(M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num_change)-np.power(
-                    8*M_Ec[i][i]/M_Ej[i][i], 0.25)*self.qubit_list[i].signal_x(self.simulator.t_list[2*n-1])*np.eye(self.simulator.operator_order_num_change), self.simulator.trigonometric_function_expand_order_num)+(M_Ej[i][i]-0.5*np.sqrt(8*M_Ej[i][i]*M_Ec[i][i]))*np.eye(self.simulator.operator_order_num_change)
+                Hamiltonian_temp = 0.5*np.sqrt(8*self.M_Ec[i][i]*M_Ej[i][i])*np.matmul((Y-self.qubit_list[i].signal_x(self.simulator.t_list[2*n])*np.eye(self.simulator.operator_order_num_change)), (Y-self.qubit_list[i].signal_x(self.simulator.t_list[2*n])*np.eye(self.simulator.operator_order_num_change)))-M_Ej[i][i]*fun.cos_matrix_n(self.operator_phi_generator(self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num_change)-np.power(
+                    8*self.M_Ec[i][i]/M_Ej[i][i], 0.25)*self.qubit_list[i].signal_x(self.simulator.t_list[2*n-1])*np.eye(self.simulator.operator_order_num_change), self.simulator.trigonometric_function_expand_order_num)+(M_Ej[i][i]-0.5*np.sqrt(8*M_Ej[i][i]*self.M_Ec[i][i]))*np.eye(self.simulator.operator_order_num_change)
                 Hamiltonian_temp = Hamiltonian_temp[0:self.simulator.operator_order_num,
                                                     0:self.simulator.operator_order_num]
                 Hamiltonian = Hamiltonian+self.tensor_identity_expand_generator(
@@ -366,23 +367,22 @@ class Circuit():
             for i in range(self.qubit_number):
                 for j in range(self.qubit_number):
                     if i != j:
-                        Hamiltonian = Hamiltonian+4*M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                            M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                        Hamiltonian = Hamiltonian+4*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
+                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
                         Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                            M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
             return Hamiltonian
 
         if mode == 'z':
             Hamiltonian = 0
-            M_Ec = self.M_Ec_generator()
             M_Ej = self.M_Ej_generator()
             Y = complex(0, 1)*(fun.annihilation_operator_n(self.simulator.operator_order_num_change) -
                                fun.creation_operator_n(self.simulator.operator_order_num_change))/np.sqrt(2)
 
             for i in range(self.qubit_number):
-                Hamiltonian_temp = 0.5*np.sqrt(8*M_Ec[i][i]*M_Ej[i][i])*np.matmul((Y-0*np.eye(self.simulator.operator_order_num_change)), (Y-0*np.eye(self.simulator.operator_order_num_change)))-M_Ej[i][i]*fun.cos_matrix_n(self.operator_phi_generator(M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num_change)-np.power(
-                    8*M_Ec[i][i]/M_Ej[i][i], 0.25)*0*np.eye(self.simulator.operator_order_num_change), self.simulator.trigonometric_function_expand_order_num)+(M_Ej[i][i]-0.5*np.sqrt(8*M_Ej[i][i]*M_Ec[i][i]))*np.eye(self.simulator.operator_order_num_change)
+                Hamiltonian_temp = 0.5*np.sqrt(8*self.M_Ec[i][i]*M_Ej[i][i])*np.matmul((Y-0*np.eye(self.simulator.operator_order_num_change)), (Y-0*np.eye(self.simulator.operator_order_num_change)))-M_Ej[i][i]*fun.cos_matrix_n(self.operator_phi_generator(self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num_change)-np.power(
+                    8*self.M_Ec[i][i]/M_Ej[i][i], 0.25)*0*np.eye(self.simulator.operator_order_num_change), self.simulator.trigonometric_function_expand_order_num)+(M_Ej[i][i]-0.5*np.sqrt(8*M_Ej[i][i]*self.M_Ec[i][i]))*np.eye(self.simulator.operator_order_num_change)
                 Hamiltonian_temp = Hamiltonian_temp[0:self.simulator.operator_order_num,
                                                     0:self.simulator.operator_order_num]
                 Hamiltonian = Hamiltonian+self.tensor_identity_expand_generator(
@@ -391,10 +391,10 @@ class Circuit():
             for i in range(self.qubit_number):
                 for j in range(self.qubit_number):
                     if i != j:
-                        Hamiltonian = Hamiltonian+4*M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                            M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                        Hamiltonian = Hamiltonian+4*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
+                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
                         Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                            M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
             return Hamiltonian
 
@@ -424,9 +424,9 @@ class Circuit():
             np.array: The n'st time piece's time evolution operator.
         """
         t_piece = self.simulator.t_piece*1E9
-        Hamiltonian_middle = self.Hamiltonian_generator(n, 'm')/ct.H/1E9
-        Hamiltonian_left = self.Hamiltonian_generator(n, 'l')/ct.H/1E9
-        Hamiltonian_right = self.Hamiltonian_generator(n, 'r')/ct.H/1E9
+        Hamiltonian_middle = self.Hamiltonian_generator('m', n)/ct.H/1E9
+        Hamiltonian_left = self.Hamiltonian_generator('l', n)/ct.H/1E9
+        Hamiltonian_right = self.Hamiltonian_generator('r', n)/ct.H/1E9
         Hamiltonian_I = (Hamiltonian_right-Hamiltonian_left)/t_piece
         Hamiltonian_II = 4*(Hamiltonian_right+Hamiltonian_left -
                             2*Hamiltonian_middle)/(t_piece**2)
