@@ -8,4 +8,4 @@
 5.pip install QubitSim2-1.0.tar.gz -i https://pypi.tuna.tsinghua.edu.cn/simple
 ~~~
 # 2.Example
-There is  a jupyter notebook example in QubitSim2/temp/example.ipynb
+There is  a jupyter notebook example in QubitSim2/example/example.ipynb
