@@ -134,3 +134,38 @@ def const_zero(time):
         float: Zero.
     """
     return 0
+
+
+def subspacestate_tag_convert(number, base_number_system, low_energy_tag, high_energylevel_num, width):
+    """
+
+    Args:
+        number (int): State number.
+        base_number_system (int): Base system number.
+        low_energy_tag (int, optional): The single qubit states less than or equal to this variable will be defined to low energy level. 
+                                            For example, if this variable equaled to 1, the state 0 and 1 would be defined to low energy level.
+        hign_energylevel_num (int, optional): The maximal of high energy level number in multiqubit states.
+        width (int): Subspacestate tag bit number.
+
+    Returns:
+        str: Subspacestate tag or None.
+    """
+    quotient = number
+    string = ""
+    high_energylevel_count = 0
+    while quotient >= base_number_system:
+        remainder = quotient % base_number_system
+        quotient = int(quotient/base_number_system)
+        if remainder > low_energy_tag:
+            high_energylevel_count += 1
+        if high_energylevel_count > high_energylevel_num:
+            return None
+        string = string+str(remainder)
+    if quotient > low_energy_tag:
+        high_energylevel_count += 1
+    if high_energylevel_count > high_energylevel_num:
+        return None
+    string = string+str(quotient)
+    string = string[::-1]
+    string = string.rjust(width, '0')
+    return string

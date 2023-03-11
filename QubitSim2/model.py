@@ -16,6 +16,7 @@ class Circuit():
         self.simulator = None
         self.subspace = []
         self.M_Ec = None
+        self.subspace_list = []
         self.dressed_eigenvalue = None
         self.dressed_featurevector = None
         self.time_evolution_operator = None
@@ -74,8 +75,8 @@ class Circuit():
         if channel == 'z':
             self.qubit_list[qubit_index].signal_z = signal_fun
 
-    def set_simulation_parameter(self, t_start=0, t_end=20E-9, t_piece=1E-11, operator_order_num=4, trigonometric_function_expand_order_num=8, exponent_function_expand_order_num=15, low_energy_tag=1, hign_energylevel_num=1):
-        """_summary_
+    def set_simulation_parameter(self, t_start=0, t_end=20E-9, t_piece=1E-11, operator_order_num=4, trigonometric_function_expand_order_num=8, exponent_function_expand_order_num=15, low_energy_tag=1, high_energylevel_num=1):
+        """Simulation parameter setting function.
 
         Args:
             t_start (float, optional): Starting time point. Defaults to 0.
@@ -86,24 +87,26 @@ class Circuit():
             exponent_function_expand_order_num (int, optional): Exponent_function_expand_order_num. Defaults to 15.
             low_energy_tag (int, optional): The single qubit states less than or equal to this variable will be defined to low energy level. 
                                             For example, if this variable equaled to 1, the state 0 and 1 would be defined to low energy level. Defaults to 1.
-            hign_energylevel_num (int, optional): The maximal of high energy level number in multiqubit states. Defaults to 1.
+            high_energylevel_num (int, optional): The maximal of high energy level number in multiqubit states. Defaults to 1.
         """
         self.simulator = Simulator(t_start, t_end, t_piece, operator_order_num, trigonometric_function_expand_order_num,
-                                   exponent_function_expand_order_num)
+                                   exponent_function_expand_order_num, low_energy_tag, high_energylevel_num)
 
     def run(self):
         # 1.Getting transformational matrix converting bare bases to dressed bases.
+        # M_Ec: Capactor energy matrix.
+        # subspace_list: Subspace state index.
         # dressed_eigenvalue: Dressed states' energy eigenvalue.
         # dressed_featurevector: Transformational matrix converting bare bases to dressed bases
-        # M_Ec: Capactor energy matrix.
+
         self.M_Ec = self.M_Ec_generator()
+        self.subspace_list = self.subspace_list_generator()
         self.dressed_eigenvalue, self.dressed_featurevector = self.transformational_matrix_generator(
             self.Hamiltonian_generator())
 
         # 2.Simulation calculating the whole time evolution operator.
         p = progressbar.ProgressBar()
-        self.time_evolution_operator = np.eye(
-            self.simulator.operator_order_num**self.qubit_number)
+        self.time_evolution_operator = np.eye(len(self.subspace_list))
         self.time_evolution_operator_path = []
         self.time_evolution_operator_path.append(np.matmul(np.linalg.inv(
             self.dressed_featurevector), np.matmul(self.time_evolution_operator, self.dressed_featurevector)))
@@ -296,9 +299,38 @@ class Circuit():
         return matrix_expand
 
     def subspace_list_generator(self):
-        subspace_list = []
-        state_temp = np.zeros(len(self.qubit_list))
+        """The function to generate subspace state list.
+
+        Returns:
+            np.array: Subspace state list.
+        """
+        subspace_list = np.zeros(0)
         for i in range(self.simulator.operator_order_num**len(self.qubit_list)):
+            temp = fun.subspacestate_tag_convert(
+                i, self.simulator.operator_order_num, self.simulator.low_energylevel_tag, self.simulator.high_energylevel_num, self.qubit_number)
+            if temp != None:
+                subspace_list = np.append(subspace_list, i)
+        return subspace_list
+
+    def subspace_Hamiltonian_generator(self, Hamiltonian):
+        """The function to generate subspace Hamiltonian.
+
+        Args:
+            Hamiltonian (np.array): The Hamiltonian which would be degenerated to subspace Hamiltonian.
+
+        Returns:
+            np.array: Subspace Hamiltonian.
+        """
+        Hamiltonian_temp = Hamiltonian
+        delete_count = 0
+        for i in range(self.simulator.operator_order_num**len(self.qubit_list)):
+            if fun.subspacestate_tag_convert(i, self.simulator.operator_order_num, self.simulator.low_energylevel_tag, self.simulator.high_energylevel_num, self.qubit_number) == None:
+                Hamiltonian_temp = np.delete(
+                    Hamiltonian_temp, i-delete_count, axis=1)
+                Hamiltonian_temp = np.delete(
+                    Hamiltonian_temp, i-delete_count, axis=0)
+                delete_count = delete_count+1
+        return Hamiltonian_temp
 
     def Hamiltonian_generator(self, mode='z', n=0):
         """The function calculating the n'st time piece's Hamiltonian operator.
@@ -332,7 +364,7 @@ class Circuit():
                         Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
                             self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
-            return Hamiltonian
+            return self.subspace_Hamiltonian_generator(Hamiltonian)
 
         if mode == 'l':
             Hamiltonian = 0
@@ -356,7 +388,7 @@ class Circuit():
                         Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
                             self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
-            return Hamiltonian
+            return self.subspace_Hamiltonian_generator(Hamiltonian)
 
         if mode == 'r':
             Hamiltonian = 0
@@ -380,7 +412,7 @@ class Circuit():
                         Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
                             self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
-            return Hamiltonian
+            return self.subspace_Hamiltonian_generator(Hamiltonian)
 
         if mode == 'z':
             Hamiltonian = 0
@@ -404,7 +436,7 @@ class Circuit():
                         Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
                             self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
-            return Hamiltonian
+            return self.subspace_Hamiltonian_generator(Hamiltonian)
 
     def transformational_matrix_generator(self, H_0):
         """The function generating transformational matrix converting bare bases to dressed bases.
@@ -479,7 +511,7 @@ class Circuit():
         return (time_evolution_operator_dressed, time_evolution_operator_dressed_sub)
 
     def dressed_state_index_find(self, bare_state_list, dressed_featurevector):
-        """The function finding the corresponding dress state's index according to the bare state's tag.
+        """The function finding the corresponding dress state's index according to the bare state's tag. 
 
         Args:
             dressed_featurevector (np.array): Dressed featurevector.
@@ -492,6 +524,8 @@ class Circuit():
         for i in range(self.qubit_number):
             bare_state_index = bare_state_index+bare_state_list[i] * \
                 self.simulator.operator_order_num**(self.qubit_number-1-i)
+        temp = np.where(self.subspace_list == bare_state_index)
+        bare_state_index = temp[0][0]
         return np.argmax(np.abs(dressed_featurevector[bare_state_index, :]))
 
 
@@ -532,7 +566,7 @@ class Connect():
 
 
 class Simulator():
-    def __init__(self, t_start=0, t_end=20E-9, t_piece=1E-11, operator_order_num=4, trigonometric_function_expand_order_num=8, exponent_function_expand_order_num=15, low_energy_tag=1, hign_energylevel_num=1):
+    def __init__(self, t_start=0, t_end=20E-9, t_piece=1E-11, operator_order_num=4, trigonometric_function_expand_order_num=8, exponent_function_expand_order_num=15, low_energy_tag=1, high_energylevel_num=1):
         """Simulator class's initial function.
 
         Args:
@@ -544,7 +578,7 @@ class Simulator():
             exponent_function_expand_order_num (int, optional): Exponent_function_expand_order_num. Defaults to 15.
             low_energy_tag (int, optional): The single qubit states less than or equal to this variable will be defined to low energy level. 
                                             For example, if this variable equaled to 1, the state 0 and 1 would be defined to low energy level. Defaults to 1.
-            hign_energylevel_num (int, optional): The maximal of high energy level number in multiqubit states. Defaults to 1.
+            high_energylevel_num (int, optional): The maximal of high energy level number in multiqubit states. Defaults to 1.
         """
         self.t_start = t_start
         self.t_end = t_end
@@ -553,7 +587,7 @@ class Simulator():
         self.trigonometric_function_expand_order_num = trigonometric_function_expand_order_num
         self.exponent_function_expand_order_num = exponent_function_expand_order_num
         self.low_energylevel_tag = low_energy_tag
-        self.hign_energylevel_num = hign_energylevel_num
+        self.high_energylevel_num = high_energylevel_num
 
         # operator_order_num_change: Operator expanding order using to calculating H0.
         # t_piece_num: 2*Number of piece time.
