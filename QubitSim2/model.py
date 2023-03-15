@@ -3,6 +3,7 @@ from numpy import kron
 import progressbar
 from matplotlib import pyplot as plt
 from matplotlib import lines
+from scipy.linalg import expm
 import QubitSim2.constant as ct
 import QubitSim2.function as fun
 
@@ -75,7 +76,7 @@ class Circuit():
         if channel == 'z':
             self.qubit_list[qubit_index].signal_z = signal_fun
 
-    def set_simulation_parameter(self, t_start=0, t_end=20E-9, t_piece=1E-11, operator_order_num=4, trigonometric_function_expand_order_num=8, exponent_function_expand_order_num=15, low_energy_tag=1, high_energylevel_num=1):
+    def set_simulation_parameter(self, t_start=0, t_end=20E-9, t_piece=1E-11, operator_order_num=4, trigonometric_function_expand_order_num=8, low_energy_tag=1, high_energylevel_num=1):
         """Simulation parameter setting function.
 
         Args:
@@ -84,13 +85,12 @@ class Circuit():
             t_piece (float, optional): Piece time. Defaults to 1E-11.
             operator_order_num (int, optional): Operator_order_num. Defaults to 4.
             trigonometric_function_expand_order_num (int, optional): Trigonometric_function_expand_order_num. Defaults to 8.
-            exponent_function_expand_order_num (int, optional): Exponent_function_expand_order_num. Defaults to 15.
             low_energy_tag (int, optional): The single qubit states less than or equal to this variable will be defined to low energy level. 
                                             For example, if this variable equaled to 1, the state 0 and 1 would be defined to low energy level. Defaults to 1.
             high_energylevel_num (int, optional): The maximal of high energy level number in multiqubit states. Defaults to 1.
         """
-        self.simulator = Simulator(t_start, t_end, t_piece, operator_order_num, trigonometric_function_expand_order_num,
-                                   exponent_function_expand_order_num, low_energy_tag, high_energylevel_num)
+        self.simulator = Simulator(t_start, t_end, t_piece, operator_order_num,
+                                   trigonometric_function_expand_order_num, low_energy_tag, high_energylevel_num)
 
     def run(self):
         # 1.Getting transformational matrix converting bare bases to dressed bases.
@@ -473,8 +473,8 @@ class Circuit():
         Hamiltonian_I0 = np.matmul(
             Hamiltonian_middle, Hamiltonian_I)-np.matmul(Hamiltonian_I, Hamiltonian_middle)
 
-        time_evolution_operator = fun.exp_matrix_n(-2*np.pi*complex(0, 1)*(Hamiltonian_middle*t_piece+1/24*Hamiltonian_II *
-                                                   t_piece**3)+4*np.pi**2/12*Hamiltonian_I0*t_piece**3, self.simulator.exponent_function_expand_order_num)
+        time_evolution_operator = expm(-2*np.pi*complex(0, 1)*(Hamiltonian_middle*t_piece+1/24*Hamiltonian_II *
+                                                               t_piece**3)+4*np.pi**2/12*Hamiltonian_I0*t_piece**3)
 
         return time_evolution_operator
 
@@ -566,7 +566,7 @@ class Connect():
 
 
 class Simulator():
-    def __init__(self, t_start=0, t_end=20E-9, t_piece=1E-11, operator_order_num=4, trigonometric_function_expand_order_num=8, exponent_function_expand_order_num=15, low_energy_tag=1, high_energylevel_num=1):
+    def __init__(self, t_start=0, t_end=20E-9, t_piece=1E-11, operator_order_num=4, trigonometric_function_expand_order_num=8, low_energy_tag=1, high_energylevel_num=1):
         """Simulator class's initial function.
 
         Args:
@@ -575,7 +575,6 @@ class Simulator():
             t_piece (float, optional): Piece time. Defaults to 1E-11.
             operator_order_num (int, optional): Operator_order_num. Defaults to 4.
             trigonometric_function_expand_order_num (int, optional): Trigonometric_function_expand_order_num. Defaults to 8.
-            exponent_function_expand_order_num (int, optional): Exponent_function_expand_order_num. Defaults to 15.
             low_energy_tag (int, optional): The single qubit states less than or equal to this variable will be defined to low energy level. 
                                             For example, if this variable equaled to 1, the state 0 and 1 would be defined to low energy level. Defaults to 1.
             high_energylevel_num (int, optional): The maximal of high energy level number in multiqubit states. Defaults to 1.
@@ -585,7 +584,6 @@ class Simulator():
         self.t_piece = t_piece
         self.operator_order_num = operator_order_num
         self.trigonometric_function_expand_order_num = trigonometric_function_expand_order_num
-        self.exponent_function_expand_order_num = exponent_function_expand_order_num
         self.low_energylevel_tag = low_energy_tag
         self.high_energylevel_num = high_energylevel_num
 

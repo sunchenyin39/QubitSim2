@@ -7,5 +7,5 @@ setup(
     author_email="sunchenyin@mail.ustc.edu.cn",
     description="Qubit Simulation",
     packages=["QubitSim2"],
-    install_requires=['numpy', 'progressbar', 'matplotlib']
+    install_requires=['numpy', 'progressbar', 'matplotlib', 'scipy']
 )
