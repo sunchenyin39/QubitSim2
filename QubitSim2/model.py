@@ -18,6 +18,8 @@ class Circuit():
         self.subspace = []
         self.M_Ec = None
         self.subspace_list = []
+        self.subspace_transmatrix_left = None
+        self.subspace_transmatrix_right = None
         self.dressed_eigenvalue = None
         self.dressed_featurevector = None
         self.time_evolution_operator = None
@@ -96,11 +98,14 @@ class Circuit():
         # 1.Getting transformational matrix converting bare bases to dressed bases.
         # M_Ec: Capactor energy matrix.
         # subspace_list: Subspace state index.
+        # subspace_transmatrix_left: Left transformation matrix transforming Hamiltonian to subspace.
+        # subspace_transmatrix_right: Right transformation matrix transforming Hamiltonian to subspace.
         # dressed_eigenvalue: Dressed states' energy eigenvalue.
         # dressed_featurevector: Transformational matrix converting bare bases to dressed bases
-
         self.M_Ec = self.M_Ec_generator()
         self.subspace_list = self.subspace_list_generator()
+        (self.subspace_transmatrix_left,
+         self.subspace_transmatrix_right) = self.subspace_transmatrix_generator()
         self.dressed_eigenvalue, self.dressed_featurevector = self.transformational_matrix_generator(
             self.Hamiltonian_generator())
 
@@ -304,13 +309,28 @@ class Circuit():
         Returns:
             np.array: Subspace state list.
         """
-        subspace_list = np.zeros(0)
+        subspace_list = []
         for i in range(self.simulator.operator_order_num**len(self.qubit_list)):
             temp = fun.subspacestate_tag_convert(
                 i, self.simulator.operator_order_num, self.simulator.low_energylevel_tag, self.simulator.high_energylevel_num, self.qubit_number)
             if temp != None:
-                subspace_list = np.append(subspace_list, i)
+                subspace_list.append(i)
         return subspace_list
+
+    def subspace_transmatrix_generator(self):
+        """Left transformation matrix and right transformation matrix generator.
+
+        Returns:
+            (np.array,np.array): Left transformation matrix and right transformation matrix.
+        """
+        subspace_transmatrix_left = np.zeros(
+            [len(self.subspace_list), self.simulator.operator_order_num**len(self.qubit_list)])
+        subspace_transmatrix_right = np.zeros(
+            [self.simulator.operator_order_num**len(self.qubit_list), len(self.subspace_list)])
+        for i in range(len(self.subspace_list)):
+            subspace_transmatrix_left[i][self.subspace_list[i]] = 1
+            subspace_transmatrix_right[self.subspace_list[i]][i] = 1
+        return (subspace_transmatrix_left, subspace_transmatrix_right)
 
     def subspace_Hamiltonian_generator(self, Hamiltonian):
         """The function to generate subspace Hamiltonian.
@@ -321,16 +341,7 @@ class Circuit():
         Returns:
             np.array: Subspace Hamiltonian.
         """
-        Hamiltonian_temp = Hamiltonian
-        delete_count = 0
-        for i in range(self.simulator.operator_order_num**len(self.qubit_list)):
-            if fun.subspacestate_tag_convert(i, self.simulator.operator_order_num, self.simulator.low_energylevel_tag, self.simulator.high_energylevel_num, self.qubit_number) == None:
-                Hamiltonian_temp = np.delete(
-                    Hamiltonian_temp, i-delete_count, axis=1)
-                Hamiltonian_temp = np.delete(
-                    Hamiltonian_temp, i-delete_count, axis=0)
-                delete_count = delete_count+1
-        return Hamiltonian_temp
+        return np.matmul(self.subspace_transmatrix_left, np.matmul(Hamiltonian, self.subspace_transmatrix_right))
 
     def Hamiltonian_generator(self, mode='z', n=0):
         """The function calculating the n'st time piece's Hamiltonian operator.
@@ -524,8 +535,7 @@ class Circuit():
         for i in range(self.qubit_number):
             bare_state_index = bare_state_index+bare_state_list[i] * \
                 self.simulator.operator_order_num**(self.qubit_number-1-i)
-        temp = np.where(self.subspace_list == bare_state_index)
-        bare_state_index = temp[0][0]
+        bare_state_index = self.subspace_list.index(bare_state_index)
         return np.argmax(np.abs(dressed_featurevector[bare_state_index, :]))
 
 
