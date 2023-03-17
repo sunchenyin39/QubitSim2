@@ -2,4 +2,3 @@ matplotlib==3.6.1
 numpy==1.23.3
 progressbar33==2.4
 scipy==1.9.1
-setuptools==63.2.0
