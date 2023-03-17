@@ -368,12 +368,11 @@ class Circuit():
                     Hamiltonian_temp, i)
 
             for i in range(self.qubit_number):
-                for j in range(self.qubit_number):
-                    if i != j:
-                        Hamiltonian = Hamiltonian+4*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
-                        Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                for j in range(i+1, self.qubit_number):
+                    Hamiltonian = Hamiltonian+8*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                    Hamiltonian = Hamiltonian+M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
             return self.subspace_Hamiltonian_generator(Hamiltonian)
 
@@ -392,12 +391,11 @@ class Circuit():
                     Hamiltonian_temp, i)
 
             for i in range(self.qubit_number):
-                for j in range(self.qubit_number):
-                    if i != j:
-                        Hamiltonian = Hamiltonian+4*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
-                        Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                for j in range(i+1, self.qubit_number):
+                    Hamiltonian = Hamiltonian+8*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                    Hamiltonian = Hamiltonian+M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
             return self.subspace_Hamiltonian_generator(Hamiltonian)
 
@@ -416,12 +414,11 @@ class Circuit():
                     Hamiltonian_temp, i)
 
             for i in range(self.qubit_number):
-                for j in range(self.qubit_number):
-                    if i != j:
-                        Hamiltonian = Hamiltonian+4*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
-                        Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                for j in range(i+1, self.qubit_number):
+                    Hamiltonian = Hamiltonian+8*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                    Hamiltonian = Hamiltonian+M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
             return self.subspace_Hamiltonian_generator(Hamiltonian)
 
@@ -440,12 +437,11 @@ class Circuit():
                     Hamiltonian_temp, i)
 
             for i in range(self.qubit_number):
-                for j in range(self.qubit_number):
-                    if i != j:
-                        Hamiltonian = Hamiltonian+4*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
-                        Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                for j in range(i+1, self.qubit_number):
+                    Hamiltonian = Hamiltonian+8*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                    Hamiltonian = Hamiltonian+M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
             return self.subspace_Hamiltonian_generator(Hamiltonian)
 
