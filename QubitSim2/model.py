@@ -295,13 +295,20 @@ class Circuit():
             np.array: The matrix expanded.
         """
         matrix_expand = 1
-        for i in range(self.qubit_number):
-            if i == index:
-                matrix_expand = kron(matrix_expand, matrix)
-            else:
-                matrix_expand = kron(matrix_expand, np.eye(
-                    self.simulator.operator_order_num))
+        dim_l = self.simulator.operator_order_num**index
+        dim_r = self.simulator.operator_order_num**(self.qubit_number - 1 - index)
+        matrix_expand = kron(matrix, np.eye(dim_r, dim_r))
+        matrix_expand = kron(np.eye(dim_l, dim_l), matrix_expand)
         return matrix_expand
+
+        # matrix_expand = 1
+        # for i in range(self.qubit_number):
+        #     if i == index:
+        #         matrix_expand = kron(matrix_expand, matrix)
+        #     else:
+        #         matrix_expand = kron(matrix_expand, np.eye(
+        #             self.simulator.operator_order_num))
+        # return matrix_expand
 
     def subspace_list_generator(self):
         """The function to generate subspace state list.
