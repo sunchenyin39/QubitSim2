@@ -216,7 +216,7 @@ class Circuit():
                 exit()
             for i in range(len(self.qubit_list)):
                 phi_list.append(
-                    self.qubit_list[i].phi_r+self.qubit_list[i].signal_z(time))
+                    self.qubit_list[i].phi_r+self.qubit_list[i].signal_z(time)*np.pi)
                 Ic_1.append(self.qubit_list[i].I_c_1)
                 Ic_2.append(self.qubit_list[i].I_c_2)
         else:
@@ -296,7 +296,8 @@ class Circuit():
         """
         matrix_expand = 1
         dim_l = self.simulator.operator_order_num**index
-        dim_r = self.simulator.operator_order_num**(self.qubit_number - 1 - index)
+        dim_r = self.simulator.operator_order_num**(
+            self.qubit_number - 1 - index)
         matrix_expand = kron(matrix, np.eye(dim_r, dim_r))
         matrix_expand = kron(np.eye(dim_l, dim_l), matrix_expand)
         return matrix_expand
