@@ -3,8 +3,9 @@ from numpy import kron
 import progressbar
 from matplotlib import pyplot as plt
 from matplotlib import lines
-import QubitSim2.constant as ct
-import QubitSim2.function as fun
+from scipy.linalg import expm
+import QubitSim2_bak.constant as ct
+import QubitSim2_bak.function as fun
 
 
 class Circuit():
@@ -15,13 +16,16 @@ class Circuit():
         self.connect_list = []
         self.simulator = None
         self.subspace = []
+        self.M_Ec = None
+        self.subspace_list = []
+        self.subspace_transmatrix_left = None
+        self.subspace_transmatrix_right = None
         self.dressed_eigenvalue = None
         self.dressed_featurevector = None
         self.time_evolution_operator = None
         self.time_evolution_operator_path = []
         self.time_evolution_operator_dressed = None
         self.time_evolution_operator_dressed_sub = None
-        self.M_Ec = None
         # ====================================================================
 
     def add_qubit(self, C, phi_r, I_c_1, I_c_2):
@@ -74,8 +78,8 @@ class Circuit():
         if channel == 'z':
             self.qubit_list[qubit_index].signal_z = signal_fun
 
-    def set_simulation_parameter(self, t_start=0, t_end=20E-9, t_piece=1E-11, operator_order_num=4, trigonometric_function_expand_order_num=8, exponent_function_expand_order_num=15):
-        """_summary_
+    def set_simulation_parameter(self, t_start=0, t_end=20E-9, t_piece=1E-11, operator_order_num=4, trigonometric_function_expand_order_num=8, low_energy_tag=1, high_energylevel_num=1):
+        """Simulation parameter setting function.
 
         Args:
             t_start (float, optional): Starting time point. Defaults to 0.
@@ -83,24 +87,31 @@ class Circuit():
             t_piece (float, optional): Piece time. Defaults to 1E-11.
             operator_order_num (int, optional): Operator_order_num. Defaults to 4.
             trigonometric_function_expand_order_num (int, optional): Trigonometric_function_expand_order_num. Defaults to 8.
-            exponent_function_expand_order_num (int, optional): Exponent_function_expand_order_num. Defaults to 15.
+            low_energy_tag (int, optional): The single qubit states less than or equal to this variable will be defined to low energy level. 
+                                            For example, if this variable equaled to 1, the state 0 and 1 would be defined to low energy level. Defaults to 1.
+            high_energylevel_num (int, optional): The maximal of high energy level number in multiqubit states. Defaults to 1.
         """
-        self.simulator = Simulator(t_start, t_end, t_piece, operator_order_num, trigonometric_function_expand_order_num,
-                                   exponent_function_expand_order_num)
+        self.simulator = Simulator(t_start, t_end, t_piece, operator_order_num,
+                                   trigonometric_function_expand_order_num, low_energy_tag, high_energylevel_num)
 
     def run(self):
         # 1.Getting transformational matrix converting bare bases to dressed bases.
+        # M_Ec: Capactor energy matrix.
+        # subspace_list: Subspace state index.
+        # subspace_transmatrix_left: Left transformation matrix transforming Hamiltonian to subspace.
+        # subspace_transmatrix_right: Right transformation matrix transforming Hamiltonian to subspace.
         # dressed_eigenvalue: Dressed states' energy eigenvalue.
         # dressed_featurevector: Transformational matrix converting bare bases to dressed bases
-        # M_Ec: Capactor energy matrix.
         self.M_Ec = self.M_Ec_generator()
+        self.subspace_list = self.subspace_list_generator()
+        (self.subspace_transmatrix_left,
+         self.subspace_transmatrix_right) = self.subspace_transmatrix_generator()
         self.dressed_eigenvalue, self.dressed_featurevector = self.transformational_matrix_generator(
             self.Hamiltonian_generator())
 
         # 2.Simulation calculating the whole time evolution operator.
         p = progressbar.ProgressBar()
-        self.time_evolution_operator = np.eye(
-            self.simulator.operator_order_num**self.qubit_number)
+        self.time_evolution_operator = np.eye(len(self.subspace_list))
         self.time_evolution_operator_path = []
         self.time_evolution_operator_path.append(np.matmul(np.linalg.inv(
             self.dressed_featurevector), np.matmul(self.time_evolution_operator, self.dressed_featurevector)))
@@ -205,7 +216,7 @@ class Circuit():
                 exit()
             for i in range(len(self.qubit_list)):
                 phi_list.append(
-                    self.qubit_list[i].phi_r+self.qubit_list[i].signal_z(time))
+                    self.qubit_list[i].phi_r+self.qubit_list[i].signal_z(time)*np.pi)
                 Ic_1.append(self.qubit_list[i].I_c_1)
                 Ic_2.append(self.qubit_list[i].I_c_2)
         else:
@@ -284,13 +295,61 @@ class Circuit():
             np.array: The matrix expanded.
         """
         matrix_expand = 1
-        for i in range(self.qubit_number):
-            if i == index:
-                matrix_expand = kron(matrix_expand, matrix)
-            else:
-                matrix_expand = kron(matrix_expand, np.eye(
-                    self.simulator.operator_order_num))
+        dim_l = self.simulator.operator_order_num**index
+        dim_r = self.simulator.operator_order_num**(
+            self.qubit_number - 1 - index)
+        matrix_expand = kron(matrix, np.eye(dim_r, dim_r))
+        matrix_expand = kron(np.eye(dim_l, dim_l), matrix_expand)
         return matrix_expand
+
+        # matrix_expand = 1
+        # for i in range(self.qubit_number):
+        #     if i == index:
+        #         matrix_expand = kron(matrix_expand, matrix)
+        #     else:
+        #         matrix_expand = kron(matrix_expand, np.eye(
+        #             self.simulator.operator_order_num))
+        # return matrix_expand
+
+    def subspace_list_generator(self):
+        """The function to generate subspace state list.
+
+        Returns:
+            np.array: Subspace state list.
+        """
+        subspace_list = []
+        for i in range(self.simulator.operator_order_num**len(self.qubit_list)):
+            temp = fun.subspacestate_tag_convert(
+                i, self.simulator.operator_order_num, self.simulator.low_energylevel_tag, self.simulator.high_energylevel_num, self.qubit_number)
+            if temp != None:
+                subspace_list.append(i)
+        return subspace_list
+
+    def subspace_transmatrix_generator(self):
+        """Left transformation matrix and right transformation matrix generator.
+
+        Returns:
+            (np.array,np.array): Left transformation matrix and right transformation matrix.
+        """
+        subspace_transmatrix_left = np.zeros(
+            [len(self.subspace_list), self.simulator.operator_order_num**len(self.qubit_list)])
+        subspace_transmatrix_right = np.zeros(
+            [self.simulator.operator_order_num**len(self.qubit_list), len(self.subspace_list)])
+        for i in range(len(self.subspace_list)):
+            subspace_transmatrix_left[i][self.subspace_list[i]] = 1
+            subspace_transmatrix_right[self.subspace_list[i]][i] = 1
+        return (subspace_transmatrix_left, subspace_transmatrix_right)
+
+    def subspace_Hamiltonian_generator(self, Hamiltonian):
+        """The function to generate subspace Hamiltonian.
+
+        Args:
+            Hamiltonian (np.array): The Hamiltonian which would be degenerated to subspace Hamiltonian.
+
+        Returns:
+            np.array: Subspace Hamiltonian.
+        """
+        return np.matmul(self.subspace_transmatrix_left, np.matmul(Hamiltonian, self.subspace_transmatrix_right))
 
     def Hamiltonian_generator(self, mode='z', n=0):
         """The function calculating the n'st time piece's Hamiltonian operator.
@@ -317,14 +376,13 @@ class Circuit():
                     Hamiltonian_temp, i)
 
             for i in range(self.qubit_number):
-                for j in range(self.qubit_number):
-                    if i != j:
-                        Hamiltonian = Hamiltonian+4*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
-                        Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                for j in range(i+1, self.qubit_number):
+                    Hamiltonian = Hamiltonian+8*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                    Hamiltonian = Hamiltonian+M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
-            return Hamiltonian
+            return self.subspace_Hamiltonian_generator(Hamiltonian)
 
         if mode == 'l':
             Hamiltonian = 0
@@ -341,14 +399,13 @@ class Circuit():
                     Hamiltonian_temp, i)
 
             for i in range(self.qubit_number):
-                for j in range(self.qubit_number):
-                    if i != j:
-                        Hamiltonian = Hamiltonian+4*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
-                        Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                for j in range(i+1, self.qubit_number):
+                    Hamiltonian = Hamiltonian+8*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                    Hamiltonian = Hamiltonian+M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
-            return Hamiltonian
+            return self.subspace_Hamiltonian_generator(Hamiltonian)
 
         if mode == 'r':
             Hamiltonian = 0
@@ -365,14 +422,13 @@ class Circuit():
                     Hamiltonian_temp, i)
 
             for i in range(self.qubit_number):
-                for j in range(self.qubit_number):
-                    if i != j:
-                        Hamiltonian = Hamiltonian+4*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
-                        Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                for j in range(i+1, self.qubit_number):
+                    Hamiltonian = Hamiltonian+8*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                    Hamiltonian = Hamiltonian+M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
-            return Hamiltonian
+            return self.subspace_Hamiltonian_generator(Hamiltonian)
 
         if mode == 'z':
             Hamiltonian = 0
@@ -389,14 +445,13 @@ class Circuit():
                     Hamiltonian_temp, i)
 
             for i in range(self.qubit_number):
-                for j in range(self.qubit_number):
-                    if i != j:
-                        Hamiltonian = Hamiltonian+4*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
-                        Hamiltonian = Hamiltonian+0.5*M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                            self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                for j in range(i+1, self.qubit_number):
+                    Hamiltonian = Hamiltonian+8*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                    Hamiltonian = Hamiltonian+M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
 
-            return Hamiltonian
+            return self.subspace_Hamiltonian_generator(Hamiltonian)
 
     def transformational_matrix_generator(self, H_0):
         """The function generating transformational matrix converting bare bases to dressed bases.
@@ -433,8 +488,8 @@ class Circuit():
         Hamiltonian_I0 = np.matmul(
             Hamiltonian_middle, Hamiltonian_I)-np.matmul(Hamiltonian_I, Hamiltonian_middle)
 
-        time_evolution_operator = fun.exp_matrix_n(-2*np.pi*complex(0, 1)*(Hamiltonian_middle*t_piece+1/24*Hamiltonian_II *
-                                                   t_piece**3)+4*np.pi**2/12*Hamiltonian_I0*t_piece**3, self.simulator.exponent_function_expand_order_num)
+        time_evolution_operator = expm(-2*np.pi*complex(0, 1)*(Hamiltonian_middle*t_piece+1/24*Hamiltonian_II *
+                                                               t_piece**3)+4*np.pi**2/12*Hamiltonian_I0*t_piece**3)
 
         return time_evolution_operator
 
@@ -471,7 +526,7 @@ class Circuit():
         return (time_evolution_operator_dressed, time_evolution_operator_dressed_sub)
 
     def dressed_state_index_find(self, bare_state_list, dressed_featurevector):
-        """The function finding the corresponding dress state's index according to the bare state's tag.
+        """The function finding the corresponding dress state's index according to the bare state's tag. 
 
         Args:
             dressed_featurevector (np.array): Dressed featurevector.
@@ -484,6 +539,7 @@ class Circuit():
         for i in range(self.qubit_number):
             bare_state_index = bare_state_index+bare_state_list[i] * \
                 self.simulator.operator_order_num**(self.qubit_number-1-i)
+        bare_state_index = self.subspace_list.index(bare_state_index)
         return np.argmax(np.abs(dressed_featurevector[bare_state_index, :]))
 
 
@@ -524,7 +580,7 @@ class Connect():
 
 
 class Simulator():
-    def __init__(self, t_start=0, t_end=20E-9, t_piece=1E-11, operator_order_num=4, trigonometric_function_expand_order_num=8, exponent_function_expand_order_num=15):
+    def __init__(self, t_start=0, t_end=20E-9, t_piece=1E-11, operator_order_num=4, trigonometric_function_expand_order_num=8, low_energy_tag=1, high_energylevel_num=1):
         """Simulator class's initial function.
 
         Args:
@@ -533,14 +589,17 @@ class Simulator():
             t_piece (float, optional): Piece time. Defaults to 1E-11.
             operator_order_num (int, optional): Operator_order_num. Defaults to 4.
             trigonometric_function_expand_order_num (int, optional): Trigonometric_function_expand_order_num. Defaults to 8.
-            exponent_function_expand_order_num (int, optional): Exponent_function_expand_order_num. Defaults to 15.
+            low_energy_tag (int, optional): The single qubit states less than or equal to this variable will be defined to low energy level. 
+                                            For example, if this variable equaled to 1, the state 0 and 1 would be defined to low energy level. Defaults to 1.
+            high_energylevel_num (int, optional): The maximal of high energy level number in multiqubit states. Defaults to 1.
         """
         self.t_start = t_start
         self.t_end = t_end
         self.t_piece = t_piece
         self.operator_order_num = operator_order_num
         self.trigonometric_function_expand_order_num = trigonometric_function_expand_order_num
-        self.exponent_function_expand_order_num = exponent_function_expand_order_num
+        self.low_energylevel_tag = low_energy_tag
+        self.high_energylevel_num = high_energylevel_num
 
         # operator_order_num_change: Operator expanding order using to calculating H0.
         # t_piece_num: 2*Number of piece time.
