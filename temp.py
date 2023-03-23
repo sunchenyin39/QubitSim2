@@ -39,8 +39,5 @@ def main():
     print(Hamiltonian_subspace)
 
 
-# if __name__ == "__main__":
-#     main()
-
-Hamiltonian_list=[np.eye(4)]*3
-print(Hamiltonian_list)
+if __name__ == "__main__":
+    main()

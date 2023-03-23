@@ -307,11 +307,11 @@ class Circuit():
             np.array: The n'st time piece's Hamiltonian.
         """
         if mode == 'm':
-            n = len(self.subspace_list)*len(self.subspace_list)
+            num = len(self.subspace_list)*len(self.subspace_list)
             threads_per_block = 1024
-            blocks_per_grid = math.ceil(n / threads_per_block)
+            blocks_per_grid = math.ceil(num / threads_per_block)
             Hamiltonian_subspace = np.zeros(
-                [len(self.subspace_list), len(self.subspace_list)],dtype=complex)
+                [len(self.subspace_list), len(self.subspace_list)], dtype=complex)
             M_Ej = self.M_Ej_generator(self.simulator.t_list[2*n-1])
             Y = complex(0, 1)*(fun.annihilation_operator_n(self.simulator.operator_order_num_change) -
                                fun.creation_operator_n(self.simulator.operator_order_num_change))/np.sqrt(2)
@@ -341,7 +341,7 @@ class Circuit():
                     cuda.synchronize()
                     Hamiltonian_list = [
                         np.eye(self.simulator.operator_order_num)]*self.qubit_number
-                    Hamiltonian_list[i] = M_Ej[i][j]**self.operator_phi_generator(
+                    Hamiltonian_list[i] = M_Ej[i][j]*self.operator_phi_generator(
                         self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num)
                     Hamiltonian_list[j] = self.operator_phi_generator(
                         self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num)
@@ -352,11 +352,11 @@ class Circuit():
             return Hamiltonian_subspace
 
         if mode == 'l':
-            n = len(self.subspace_list)*len(self.subspace_list)
+            num = len(self.subspace_list)*len(self.subspace_list)
             threads_per_block = 1024
-            blocks_per_grid = math.ceil(n / threads_per_block)
+            blocks_per_grid = math.ceil(num / threads_per_block)
             Hamiltonian_subspace = np.zeros(
-                [len(self.subspace_list), len(self.subspace_list)],dtype=complex)
+                [len(self.subspace_list), len(self.subspace_list)], dtype=complex)
             M_Ej = self.M_Ej_generator(self.simulator.t_list[2*n-2])
             Y = complex(0, 1)*(fun.annihilation_operator_n(self.simulator.operator_order_num_change) -
                                fun.creation_operator_n(self.simulator.operator_order_num_change))/np.sqrt(2)
@@ -386,7 +386,7 @@ class Circuit():
                     cuda.synchronize()
                     Hamiltonian_list = [
                         np.eye(self.simulator.operator_order_num)]*self.qubit_number
-                    Hamiltonian_list[i] = M_Ej[i][j]**self.operator_phi_generator(
+                    Hamiltonian_list[i] = M_Ej[i][j]*self.operator_phi_generator(
                         self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num)
                     Hamiltonian_list[j] = self.operator_phi_generator(
                         self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num)
@@ -397,11 +397,11 @@ class Circuit():
             return Hamiltonian_subspace
 
         if mode == 'r':
-            n = len(self.subspace_list)*len(self.subspace_list)
+            num = len(self.subspace_list)*len(self.subspace_list)
             threads_per_block = 1024
-            blocks_per_grid = math.ceil(n / threads_per_block)
+            blocks_per_grid = math.ceil(num / threads_per_block)
             Hamiltonian_subspace = np.zeros(
-                [len(self.subspace_list), len(self.subspace_list)],dtype=complex)
+                [len(self.subspace_list), len(self.subspace_list)], dtype=complex)
             M_Ej = self.M_Ej_generator(self.simulator.t_list[2*n])
             Y = complex(0, 1)*(fun.annihilation_operator_n(self.simulator.operator_order_num_change) -
                                fun.creation_operator_n(self.simulator.operator_order_num_change))/np.sqrt(2)
@@ -431,7 +431,7 @@ class Circuit():
                     cuda.synchronize()
                     Hamiltonian_list = [
                         np.eye(self.simulator.operator_order_num)]*self.qubit_number
-                    Hamiltonian_list[i] = M_Ej[i][j]**self.operator_phi_generator(
+                    Hamiltonian_list[i] = M_Ej[i][j]*self.operator_phi_generator(
                         self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num)
                     Hamiltonian_list[j] = self.operator_phi_generator(
                         self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num)
@@ -442,11 +442,11 @@ class Circuit():
             return Hamiltonian_subspace
 
         if mode == 'z':
-            n = len(self.subspace_list)*len(self.subspace_list)
+            num = len(self.subspace_list)*len(self.subspace_list)
             threads_per_block = 1024
-            blocks_per_grid = math.ceil(n / threads_per_block)
+            blocks_per_grid = math.ceil(num / threads_per_block)
             Hamiltonian_subspace = np.zeros(
-                [len(self.subspace_list), len(self.subspace_list)],dtype=complex)
+                [len(self.subspace_list), len(self.subspace_list)], dtype=complex)
             M_Ej = self.M_Ej_generator()
             Y = complex(0, 1)*(fun.annihilation_operator_n(self.simulator.operator_order_num_change) -
                                fun.creation_operator_n(self.simulator.operator_order_num_change))/np.sqrt(2)
@@ -476,7 +476,7 @@ class Circuit():
                     cuda.synchronize()
                     Hamiltonian_list = [
                         np.eye(self.simulator.operator_order_num)]*self.qubit_number
-                    Hamiltonian_list[i] = M_Ej[i][j]**self.operator_phi_generator(
+                    Hamiltonian_list[i] = M_Ej[i][j]*self.operator_phi_generator(
                         self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num)
                     Hamiltonian_list[j] = self.operator_phi_generator(
                         self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num)

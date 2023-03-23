@@ -148,10 +148,10 @@ def subspacestate_tag_convert(number, base_number_system, low_energy_tag, high_e
         width (int): Subspacestate tag bit number.
 
     Returns:
-        str: Subspacestate tag or None.
+        list[int]: Subspacestate tag or None.
     """
     quotient = number
-    string = ""
+    state_tag = []
     high_energylevel_count = 0
     while quotient >= base_number_system:
         remainder = quotient % base_number_system
@@ -160,12 +160,13 @@ def subspacestate_tag_convert(number, base_number_system, low_energy_tag, high_e
             high_energylevel_count += 1
         if high_energylevel_count > high_energylevel_num:
             return None
-        string = string+str(remainder)
+        state_tag.append(remainder)
     if quotient > low_energy_tag:
         high_energylevel_count += 1
     if high_energylevel_count > high_energylevel_num:
         return None
-    string = string+str(quotient)
-    string = string[::-1]
-    string = string.rjust(width, '0')
-    return list(string)
+    state_tag.append(int(quotient))
+    for i in range(width-len(state_tag)):
+        state_tag.append(0)
+    state_tag.reverse()
+    return state_tag
