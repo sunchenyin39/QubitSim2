@@ -1,5 +1,7 @@
 import numpy as np
+import math
 from numpy import kron
+from numba import cuda
 import progressbar
 from matplotlib import pyplot as plt
 from matplotlib import lines
@@ -18,8 +20,6 @@ class Circuit():
         self.subspace = []
         self.M_Ec = None
         self.subspace_list = []
-        self.subspace_transmatrix_left = None
-        self.subspace_transmatrix_right = None
         self.dressed_eigenvalue = None
         self.dressed_featurevector = None
         self.time_evolution_operator = None
@@ -104,8 +104,6 @@ class Circuit():
         # dressed_featurevector: Transformational matrix converting bare bases to dressed bases
         self.M_Ec = self.M_Ec_generator()
         self.subspace_list = self.subspace_list_generator()
-        (self.subspace_transmatrix_left,
-         self.subspace_transmatrix_right) = self.subspace_transmatrix_generator()
         self.dressed_eigenvalue, self.dressed_featurevector = self.transformational_matrix_generator(
             self.Hamiltonian_generator())
 
@@ -284,33 +282,6 @@ class Circuit():
         """
         return complex(0, 0.5)*np.power(0.5*E_j/E_c, 0.25)*(fun.creation_operator_n(operator_order_num)-fun.annihilation_operator_n(operator_order_num))
 
-    def tensor_identity_expand_generator(self, matrix, index):
-        """The function to expand matrix with identity matrix.
-
-        Args:
-            matrix (np.array): The matrix to be expanded.
-            index (int): Qubit index.
-
-        Returns:
-            np.array: The matrix expanded.
-        """
-        matrix_expand = 1
-        dim_l = self.simulator.operator_order_num**index
-        dim_r = self.simulator.operator_order_num**(
-            self.qubit_number - 1 - index)
-        matrix_expand = kron(matrix, np.eye(dim_r, dim_r))
-        matrix_expand = kron(np.eye(dim_l, dim_l), matrix_expand)
-        return matrix_expand
-
-        # matrix_expand = 1
-        # for i in range(self.qubit_number):
-        #     if i == index:
-        #         matrix_expand = kron(matrix_expand, matrix)
-        #     else:
-        #         matrix_expand = kron(matrix_expand, np.eye(
-        #             self.simulator.operator_order_num))
-        # return matrix_expand
-
     def subspace_list_generator(self):
         """The function to generate subspace state list.
 
@@ -322,34 +293,8 @@ class Circuit():
             temp = fun.subspacestate_tag_convert(
                 i, self.simulator.operator_order_num, self.simulator.low_energylevel_tag, self.simulator.high_energylevel_num, self.qubit_number)
             if temp != None:
-                subspace_list.append(i)
+                subspace_list.append(temp)
         return subspace_list
-
-    def subspace_transmatrix_generator(self):
-        """Left transformation matrix and right transformation matrix generator.
-
-        Returns:
-            (np.array,np.array): Left transformation matrix and right transformation matrix.
-        """
-        subspace_transmatrix_left = np.zeros(
-            [len(self.subspace_list), self.simulator.operator_order_num**len(self.qubit_list)])
-        subspace_transmatrix_right = np.zeros(
-            [self.simulator.operator_order_num**len(self.qubit_list), len(self.subspace_list)])
-        for i in range(len(self.subspace_list)):
-            subspace_transmatrix_left[i][self.subspace_list[i]] = 1
-            subspace_transmatrix_right[self.subspace_list[i]][i] = 1
-        return (subspace_transmatrix_left, subspace_transmatrix_right)
-
-    def subspace_Hamiltonian_generator(self, Hamiltonian):
-        """The function to generate subspace Hamiltonian.
-
-        Args:
-            Hamiltonian (np.array): The Hamiltonian which would be degenerated to subspace Hamiltonian.
-
-        Returns:
-            np.array: Subspace Hamiltonian.
-        """
-        return np.matmul(self.subspace_transmatrix_left, np.matmul(Hamiltonian, self.subspace_transmatrix_right))
 
     def Hamiltonian_generator(self, mode='z', n=0):
         """The function calculating the n'st time piece's Hamiltonian operator.
@@ -362,96 +307,184 @@ class Circuit():
             np.array: The n'st time piece's Hamiltonian.
         """
         if mode == 'm':
-            Hamiltonian = 0
+            n = len(self.subspace_list)*len(self.subspace_list)
+            threads_per_block = 1024
+            blocks_per_grid = math.ceil(n / threads_per_block)
+            Hamiltonian_subspace = np.zeros(
+                [len(self.subspace_list), len(self.subspace_list)],dtype=complex)
             M_Ej = self.M_Ej_generator(self.simulator.t_list[2*n-1])
             Y = complex(0, 1)*(fun.annihilation_operator_n(self.simulator.operator_order_num_change) -
                                fun.creation_operator_n(self.simulator.operator_order_num_change))/np.sqrt(2)
 
             for i in range(self.qubit_number):
+                Hamiltonian_list = [
+                    np.eye(self.simulator.operator_order_num)]*self.qubit_number
                 Hamiltonian_temp = 0.5*np.sqrt(8*self.M_Ec[i][i]*M_Ej[i][i])*np.matmul((Y-0*np.eye(self.simulator.operator_order_num_change)), (Y-0*np.eye(self.simulator.operator_order_num_change)))-M_Ej[i][i]*fun.cos_matrix_n(self.operator_phi_generator(self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num_change)-np.power(
                     8*self.M_Ec[i][i]/M_Ej[i][i], 0.25)*self.qubit_list[i].signal_x(self.simulator.t_list[2*n-1])*np.eye(self.simulator.operator_order_num_change), self.simulator.trigonometric_function_expand_order_num)+(M_Ej[i][i]-0.5*np.sqrt(8*M_Ej[i][i]*self.M_Ec[i][i]))*np.eye(self.simulator.operator_order_num_change)
                 Hamiltonian_temp = Hamiltonian_temp[0:self.simulator.operator_order_num,
                                                     0:self.simulator.operator_order_num]
-                Hamiltonian = Hamiltonian+self.tensor_identity_expand_generator(
-                    Hamiltonian_temp, i)
+                Hamiltonian_list[i] = Hamiltonian_temp
+                subspace_Hamiltonian_generator_GPU[[blocks_per_grid, threads_per_block]](
+                    self.qubit_number, self.subspace_list, Hamiltonian_list, Hamiltonian_subspace)
+                cuda.synchronize()
 
             for i in range(self.qubit_number):
                 for j in range(i+1, self.qubit_number):
-                    Hamiltonian = Hamiltonian+8*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
-                    Hamiltonian = Hamiltonian+M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                    Hamiltonian_list = [
+                        np.eye(self.simulator.operator_order_num)]*self.qubit_number
+                    Hamiltonian_list[i] = 8*self.M_Ec[i][j]*self.operator_n_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num)
+                    Hamiltonian_list[j] = self.operator_n_generator(
+                        self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num)
+                    subspace_Hamiltonian_generator_GPU[[blocks_per_grid, threads_per_block]](
+                        self.qubit_number, self.subspace_list, Hamiltonian_list, Hamiltonian_subspace)
+                    cuda.synchronize()
+                    Hamiltonian_list = [
+                        np.eye(self.simulator.operator_order_num)]*self.qubit_number
+                    Hamiltonian_list[i] = M_Ej[i][j]**self.operator_phi_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num)
+                    Hamiltonian_list[j] = self.operator_phi_generator(
+                        self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num)
+                    subspace_Hamiltonian_generator_GPU[[blocks_per_grid, threads_per_block]](
+                        self.qubit_number, self.subspace_list, Hamiltonian_list, Hamiltonian_subspace)
+                    cuda.synchronize()
 
-            return self.subspace_Hamiltonian_generator(Hamiltonian)
+            return Hamiltonian_subspace
 
         if mode == 'l':
-            Hamiltonian = 0
+            n = len(self.subspace_list)*len(self.subspace_list)
+            threads_per_block = 1024
+            blocks_per_grid = math.ceil(n / threads_per_block)
+            Hamiltonian_subspace = np.zeros(
+                [len(self.subspace_list), len(self.subspace_list)],dtype=complex)
             M_Ej = self.M_Ej_generator(self.simulator.t_list[2*n-2])
             Y = complex(0, 1)*(fun.annihilation_operator_n(self.simulator.operator_order_num_change) -
                                fun.creation_operator_n(self.simulator.operator_order_num_change))/np.sqrt(2)
 
             for i in range(self.qubit_number):
+                Hamiltonian_list = [
+                    np.eye(self.simulator.operator_order_num)]*self.qubit_number
                 Hamiltonian_temp = 0.5*np.sqrt(8*self.M_Ec[i][i]*M_Ej[i][i])*np.matmul((Y-self.qubit_list[i].signal_x(self.simulator.t_list[2*n-2])*np.eye(self.simulator.operator_order_num_change)), (Y-self.qubit_list[i].signal_x(self.simulator.t_list[2*n-2])*np.eye(self.simulator.operator_order_num_change)))-M_Ej[i][i]*fun.cos_matrix_n(self.operator_phi_generator(self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num_change)-np.power(
                     8*self.M_Ec[i][i]/M_Ej[i][i], 0.25)*self.qubit_list[i].signal_x(self.simulator.t_list[2*n-1])*np.eye(self.simulator.operator_order_num_change), self.simulator.trigonometric_function_expand_order_num)+(M_Ej[i][i]-0.5*np.sqrt(8*M_Ej[i][i]*self.M_Ec[i][i]))*np.eye(self.simulator.operator_order_num_change)
                 Hamiltonian_temp = Hamiltonian_temp[0:self.simulator.operator_order_num,
                                                     0:self.simulator.operator_order_num]
-                Hamiltonian = Hamiltonian+self.tensor_identity_expand_generator(
-                    Hamiltonian_temp, i)
+                Hamiltonian_list[i] = Hamiltonian_temp
+                subspace_Hamiltonian_generator_GPU[[blocks_per_grid, threads_per_block]](
+                    self.qubit_number, self.subspace_list, Hamiltonian_list, Hamiltonian_subspace)
+                cuda.synchronize()
 
             for i in range(self.qubit_number):
                 for j in range(i+1, self.qubit_number):
-                    Hamiltonian = Hamiltonian+8*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
-                    Hamiltonian = Hamiltonian+M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                    Hamiltonian_list = [
+                        np.eye(self.simulator.operator_order_num)]*self.qubit_number
+                    Hamiltonian_list[i] = 8*self.M_Ec[i][j]*self.operator_n_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num)
+                    Hamiltonian_list[j] = self.operator_n_generator(
+                        self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num)
+                    subspace_Hamiltonian_generator_GPU[[blocks_per_grid, threads_per_block]](
+                        self.qubit_number, self.subspace_list, Hamiltonian_list, Hamiltonian_subspace)
+                    cuda.synchronize()
+                    Hamiltonian_list = [
+                        np.eye(self.simulator.operator_order_num)]*self.qubit_number
+                    Hamiltonian_list[i] = M_Ej[i][j]**self.operator_phi_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num)
+                    Hamiltonian_list[j] = self.operator_phi_generator(
+                        self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num)
+                    subspace_Hamiltonian_generator_GPU[[blocks_per_grid, threads_per_block]](
+                        self.qubit_number, self.subspace_list, Hamiltonian_list, Hamiltonian_subspace)
+                    cuda.synchronize()
 
-            return self.subspace_Hamiltonian_generator(Hamiltonian)
+            return Hamiltonian_subspace
 
         if mode == 'r':
-            Hamiltonian = 0
+            n = len(self.subspace_list)*len(self.subspace_list)
+            threads_per_block = 1024
+            blocks_per_grid = math.ceil(n / threads_per_block)
+            Hamiltonian_subspace = np.zeros(
+                [len(self.subspace_list), len(self.subspace_list)],dtype=complex)
             M_Ej = self.M_Ej_generator(self.simulator.t_list[2*n])
             Y = complex(0, 1)*(fun.annihilation_operator_n(self.simulator.operator_order_num_change) -
                                fun.creation_operator_n(self.simulator.operator_order_num_change))/np.sqrt(2)
 
             for i in range(self.qubit_number):
+                Hamiltonian_list = [
+                    np.eye(self.simulator.operator_order_num)]*self.qubit_number
                 Hamiltonian_temp = 0.5*np.sqrt(8*self.M_Ec[i][i]*M_Ej[i][i])*np.matmul((Y-self.qubit_list[i].signal_x(self.simulator.t_list[2*n])*np.eye(self.simulator.operator_order_num_change)), (Y-self.qubit_list[i].signal_x(self.simulator.t_list[2*n])*np.eye(self.simulator.operator_order_num_change)))-M_Ej[i][i]*fun.cos_matrix_n(self.operator_phi_generator(self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num_change)-np.power(
                     8*self.M_Ec[i][i]/M_Ej[i][i], 0.25)*self.qubit_list[i].signal_x(self.simulator.t_list[2*n-1])*np.eye(self.simulator.operator_order_num_change), self.simulator.trigonometric_function_expand_order_num)+(M_Ej[i][i]-0.5*np.sqrt(8*M_Ej[i][i]*self.M_Ec[i][i]))*np.eye(self.simulator.operator_order_num_change)
                 Hamiltonian_temp = Hamiltonian_temp[0:self.simulator.operator_order_num,
                                                     0:self.simulator.operator_order_num]
-                Hamiltonian = Hamiltonian+self.tensor_identity_expand_generator(
-                    Hamiltonian_temp, i)
+                Hamiltonian_list[i] = Hamiltonian_temp
+                subspace_Hamiltonian_generator_GPU[[blocks_per_grid, threads_per_block]](
+                    self.qubit_number, self.subspace_list, Hamiltonian_list, Hamiltonian_subspace)
+                cuda.synchronize()
 
             for i in range(self.qubit_number):
                 for j in range(i+1, self.qubit_number):
-                    Hamiltonian = Hamiltonian+8*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
-                    Hamiltonian = Hamiltonian+M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                    Hamiltonian_list = [
+                        np.eye(self.simulator.operator_order_num)]*self.qubit_number
+                    Hamiltonian_list[i] = 8*self.M_Ec[i][j]*self.operator_n_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num)
+                    Hamiltonian_list[j] = self.operator_n_generator(
+                        self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num)
+                    subspace_Hamiltonian_generator_GPU[[blocks_per_grid, threads_per_block]](
+                        self.qubit_number, self.subspace_list, Hamiltonian_list, Hamiltonian_subspace)
+                    cuda.synchronize()
+                    Hamiltonian_list = [
+                        np.eye(self.simulator.operator_order_num)]*self.qubit_number
+                    Hamiltonian_list[i] = M_Ej[i][j]**self.operator_phi_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num)
+                    Hamiltonian_list[j] = self.operator_phi_generator(
+                        self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num)
+                    subspace_Hamiltonian_generator_GPU[[blocks_per_grid, threads_per_block]](
+                        self.qubit_number, self.subspace_list, Hamiltonian_list, Hamiltonian_subspace)
+                    cuda.synchronize()
 
-            return self.subspace_Hamiltonian_generator(Hamiltonian)
+            return Hamiltonian_subspace
 
         if mode == 'z':
-            Hamiltonian = 0
+            n = len(self.subspace_list)*len(self.subspace_list)
+            threads_per_block = 1024
+            blocks_per_grid = math.ceil(n / threads_per_block)
+            Hamiltonian_subspace = np.zeros(
+                [len(self.subspace_list), len(self.subspace_list)],dtype=complex)
             M_Ej = self.M_Ej_generator()
             Y = complex(0, 1)*(fun.annihilation_operator_n(self.simulator.operator_order_num_change) -
                                fun.creation_operator_n(self.simulator.operator_order_num_change))/np.sqrt(2)
 
             for i in range(self.qubit_number):
+                Hamiltonian_list = [
+                    np.eye(self.simulator.operator_order_num)]*self.qubit_number
                 Hamiltonian_temp = 0.5*np.sqrt(8*self.M_Ec[i][i]*M_Ej[i][i])*np.matmul((Y-0*np.eye(self.simulator.operator_order_num_change)), (Y-0*np.eye(self.simulator.operator_order_num_change)))-M_Ej[i][i]*fun.cos_matrix_n(self.operator_phi_generator(self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num_change)-np.power(
                     8*self.M_Ec[i][i]/M_Ej[i][i], 0.25)*0*np.eye(self.simulator.operator_order_num_change), self.simulator.trigonometric_function_expand_order_num)+(M_Ej[i][i]-0.5*np.sqrt(8*M_Ej[i][i]*self.M_Ec[i][i]))*np.eye(self.simulator.operator_order_num_change)
                 Hamiltonian_temp = Hamiltonian_temp[0:self.simulator.operator_order_num,
                                                     0:self.simulator.operator_order_num]
-                Hamiltonian = Hamiltonian+self.tensor_identity_expand_generator(
-                    Hamiltonian_temp, i)
+                Hamiltonian_list[i] = Hamiltonian_temp
+                subspace_Hamiltonian_generator_GPU[[blocks_per_grid, threads_per_block]](
+                    self.qubit_number, self.subspace_list, Hamiltonian_list, Hamiltonian_subspace)
+                cuda.synchronize()
 
             for i in range(self.qubit_number):
                 for j in range(i+1, self.qubit_number):
-                    Hamiltonian = Hamiltonian+8*self.M_Ec[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_n_generator(
-                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_n_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
-                    Hamiltonian = Hamiltonian+M_Ej[i][j]*np.matmul(self.tensor_identity_expand_generator(self.operator_phi_generator(
-                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num), i), self.tensor_identity_expand_generator(self.operator_phi_generator(self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num), j))
+                    Hamiltonian_list = [
+                        np.eye(self.simulator.operator_order_num)]*self.qubit_number
+                    Hamiltonian_list[i] = 8*self.M_Ec[i][j]*self.operator_n_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num)
+                    Hamiltonian_list[j] = self.operator_n_generator(
+                        self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num)
+                    subspace_Hamiltonian_generator_GPU[[blocks_per_grid, threads_per_block]](
+                        self.qubit_number, self.subspace_list, Hamiltonian_list, Hamiltonian_subspace)
+                    cuda.synchronize()
+                    Hamiltonian_list = [
+                        np.eye(self.simulator.operator_order_num)]*self.qubit_number
+                    Hamiltonian_list[i] = M_Ej[i][j]**self.operator_phi_generator(
+                        self.M_Ec[i][i], M_Ej[i][i], self.simulator.operator_order_num)
+                    Hamiltonian_list[j] = self.operator_phi_generator(
+                        self.M_Ec[j][j], M_Ej[j][j], self.simulator.operator_order_num)
+                    subspace_Hamiltonian_generator_GPU[[blocks_per_grid, threads_per_block]](
+                        self.qubit_number, self.subspace_list, Hamiltonian_list, Hamiltonian_subspace)
+                    cuda.synchronize()
 
-            return self.subspace_Hamiltonian_generator(Hamiltonian)
+            return Hamiltonian_subspace
 
     def transformational_matrix_generator(self, H_0):
         """The function generating transformational matrix converting bare bases to dressed bases.
@@ -535,11 +568,11 @@ class Circuit():
         Returns:
             int: The index of dressed state in dressed_featurevector.
         """
-        bare_state_index = 0
-        for i in range(self.qubit_number):
-            bare_state_index = bare_state_index+bare_state_list[i] * \
-                self.simulator.operator_order_num**(self.qubit_number-1-i)
-        bare_state_index = self.subspace_list.index(bare_state_index)
+        # bare_state_index = 0
+        # for i in range(self.qubit_number):
+        #     bare_state_index = bare_state_index+bare_state_list[i] * \
+        #         self.simulator.operator_order_num**(self.qubit_number-1-i)
+        bare_state_index = self.subspace_list.index(bare_state_list)
         return np.argmax(np.abs(dressed_featurevector[bare_state_index, :]))
 
 
@@ -608,3 +641,17 @@ class Simulator():
         self.t_piece_num = int(
             np.round(2*(self.t_end-self.t_start)/self.t_piece))
         self.t_list = np.linspace(self.t_start, self.t_end, self.t_piece_num+1)
+
+
+@cuda.jit
+def subspace_Hamiltonian_generator_GPU(qubit_number, subspace_list, Hamiltonian_list, Hamiltonian_subspace):
+    idx = cuda.threadIdx.x + cuda.blockDim.x * cuda.blockIdx.x
+    if idx < len(subspace_list)**2:
+        col_index = idx % len(subspace_list)
+        row_index = int(round((idx-col_index)/len(subspace_list)))
+    temp = 1
+    for i in range(qubit_number):
+        temp = temp * \
+            Hamiltonian_list[i][int(subspace_list[row_index]
+                                [i])][int(subspace_list[col_index][i])]
+    Hamiltonian_subspace[row_index][col_index] = Hamiltonian_subspace[row_index][col_index] + temp

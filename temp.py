@@ -2,6 +2,7 @@ from numba import cuda
 import numpy as np
 import math
 from time import time
+import QubitSim2_bak.function as fun
 
 
 @cuda.jit
@@ -10,11 +11,12 @@ def subspace_Hamiltonian_generator_GPU(qubit_number, subspace_list, Hamiltonian_
     if idx < len(subspace_list)**2:
         col_index = idx % len(subspace_list)
         row_index = int(round((idx-col_index)/len(subspace_list)))
-    Hamiltonian_subspace[row_index][col_index] = 1
+    temp = 1
     for i in range(qubit_number):
-        Hamiltonian_subspace[row_index][col_index] = Hamiltonian_subspace[row_index][col_index] * \
+        temp = temp * \
             Hamiltonian_list[i][subspace_list[row_index]
                                 [i]][subspace_list[col_index][i]]
+    Hamiltonian_subspace[row_index][col_index] = Hamiltonian_subspace[row_index][col_index] + temp
 
 
 def main():
@@ -36,5 +38,9 @@ def main():
     cuda.synchronize()
     print(Hamiltonian_subspace)
 
-if __name__ == "__main__":
-    main()
+
+# if __name__ == "__main__":
+#     main()
+
+Hamiltonian_list=[np.eye(4)]*3
+print(Hamiltonian_list)

@@ -168,4 +168,4 @@ def subspacestate_tag_convert(number, base_number_system, low_energy_tag, high_e
     string = string+str(quotient)
     string = string[::-1]
     string = string.rjust(width, '0')
-    return string
+    return list(string)
